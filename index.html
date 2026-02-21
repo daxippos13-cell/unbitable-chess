@@ -39,7 +39,7 @@
         }
 
         #game-container {
-            display: flex;
+            display: none; /* Hidden by default */
             flex-direction: column;
             align-items: center;
             gap: 20px;
@@ -109,6 +109,7 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+            pointer-events: none;
         }
 
         .notification {
@@ -128,22 +129,49 @@
             to { transform: translateY(0); opacity: 1; }
         }
 
+        /* Main Menu Styles */
+        #main-menu {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid var(--text-color);
+            padding: 40px;
+            box-shadow: 0 0 30px var(--text-color);
+            z-index: 50;
+        }
+
         button {
             background: transparent;
             border: 1px solid var(--text-color);
             color: var(--text-color);
-            padding: 10px 20px;
+            padding: 15px 30px;
             font-family: inherit;
             cursor: pointer;
             transition: all 0.2s;
             text-transform: uppercase;
             font-weight: bold;
+            font-size: 1.2rem;
+            min-width: 200px;
         }
 
         button:hover {
             background: var(--text-color);
             color: black;
             box-shadow: 0 0 15px var(--text-color);
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .controls button {
+            font-size: 1rem;
+            padding: 10px 20px;
+            min-width: auto;
         }
 
         /* Responsive */
@@ -164,14 +192,21 @@
 
     <div id="notification-area"></div>
 
-    <h1>DEUS EX CHESS</h1>
+    <div id="main-menu">
+        <h1>DEUS EX CHESS</h1>
+        <p>SELECT DIFFICULTY</p>
+        <button onclick="startGame('easy')">EASY</button>
+        <button onclick="startGame('normal')">NORMAL</button>
+        <button onclick="startGame('unbeatable')">UNBEATABLE</button>
+    </div>
     
     <div id="game-container">
+        <h1>DEUS EX CHESS</h1>
         <div id="status">Human (White) vs Machine God (Black)</div>
         <div id="board"></div>
         <div class="controls">
-            <button onclick="game.reset()">Reset System</button>
-            <button onclick="game.undo()">Undo Mistake</button>
+            <button onclick="showMenu()">Main Menu</button>
+            <button onclick="restartGame()">Reset System</button>
         </div>
     </div>
 
@@ -186,11 +221,6 @@
 const PIECES = {
     p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚',
     P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔'
-};
-
-const SYMBOLS = {
-    'p': 'p', 'n': 'n', 'b': 'b', 'r': 'r', 'q': 'q', 'k': 'k',
-    'P': 'P', 'N': 'N', 'B': 'B', 'R': 'R', 'Q': 'Q', 'K': 'K'
 };
 
 const VALUES = {
@@ -301,6 +331,11 @@ class ChessEngine {
         this.halfMoves = 0;
         this.moveHistory = [];
         this.gameOver = false;
+        this.difficulty = 'normal'; // default
+    }
+
+    setDifficulty(level) {
+        this.difficulty = level;
     }
 
     // Helper: is on board?
@@ -552,8 +587,7 @@ class ChessEngine {
 
         // Check Legality (King safety)
         if (this.isCheck(this.turn)) {
-            // Illegal!
-            this.undoMove(); // FIXED: Always undo if illegal
+            this.undoMove(); // Revert
             return false;
         }
 
@@ -638,16 +672,24 @@ class ChessEngine {
         }
     }
 
-    getBestMove(depth = 3) {
+    getBestMove() {
+        let depth = 3; // Normal
+        if (this.difficulty === 'easy') depth = 1;
+        if (this.difficulty === 'unbeatable') depth = 4;
+
         const moves = this.getAllLegalMoves('black');
         if (moves.length === 0) return null;
+
+        // Randomness for Easy mode
+        if (this.difficulty === 'easy' && Math.random() < 0.3) {
+             return moves[Math.floor(Math.random() * moves.length)];
+        }
 
         let bestMove = null;
         let bestValue = Infinity;
         let alpha = -Infinity;
         let beta = Infinity;
 
-        // Iterative Deepening placeholder (just simple depth for now)
         for(let move of moves) {
             this.makeMove(move, true);
             let boardValue = this.minimax(depth - 1, alpha, beta, true); // White is max
@@ -670,8 +712,7 @@ class ChessUI {
         this.boardEl = document.getElementById('board');
         this.selectedSquare = null;
         this.possibleMoves = [];
-        this.renderBoard();
-        this.setupInput();
+        // No render yet, wait for start
     }
 
     renderBoard() {
@@ -759,19 +800,32 @@ class ChessUI {
 
                         // AI Turn
                         setTimeout(() => this.aiMove(), 100);
+                    } else {
+                         this.notify("Illegal Move. System Rejected.");
                     }
                 } else {
-                    // Invalid click, deselect
+                    // It was NOT in possible moves. Analyze why for feedback.
+                    // 1. Is it a pseudo-legal move?
+                    const allPseudo = this.game.generateMoves(this.selectedSquare.r, this.selectedSquare.c);
+                    const pseudoMatch = allPseudo.find(m => m.tr === r && m.tc === c);
+                    
+                    if (pseudoMatch) {
+                        // It WAS pseudo-legal, so it must be illegal due to King Safety
+                        this.notify("ILLEGAL: Move leaves King in CHECK.");
+                    } else {
+                        // It was not even reachable
+                        if (clickedPiece && this.game.isWhite(clickedPiece)) {
+                            // Just clicked another piece, handled above
+                        } else {
+                            this.notify("ILLEGAL: Piece cannot move there.");
+                        }
+                    }
+
+                    // Deselect if clicking empty or enemy
                     if (clickedPiece === null || !this.game.isWhite(clickedPiece)) {
                          this.selectedSquare = null;
                          this.possibleMoves = [];
                          this.renderBoard();
-                         // Notify if it was an attempt to move
-                         if (clickedPiece === null && this.selectedSquare) {
-                             // Silent deselect
-                         } else if (this.selectedSquare) {
-                             this.notify("Illegal Move. The laws of physics forbid it.");
-                         }
                     }
                 }
             }
@@ -781,7 +835,7 @@ class ChessUI {
     aiMove() {
         document.getElementById('status').textContent = "The Machine God is thinking...";
         setTimeout(() => {
-            const bestMove = this.game.getBestMove(3); // Depth 3 is strong for JS
+            const bestMove = this.game.getBestMove(); 
             if (bestMove) {
                 this.game.makeMove(bestMove);
                 this.renderBoard();
@@ -818,28 +872,30 @@ class ChessUI {
 const game = new ChessEngine();
 const ui = new ChessUI(game);
 
-// Global access for buttons
-window.game = {
-    reset: () => {
-        game.reset();
-        ui.selectedSquare = null;
-        ui.possibleMoves = [];
-        ui.renderBoard();
-        ui.notify("SYSTEM RESET. NEW TIMELINE STARTED.");
-    },
-    undo: () => {
-        // Undo AI, then Undo Player
-        if (game.moveHistory.length >= 2) {
-            game.undoMove();
-            game.undoMove();
-            ui.selectedSquare = null;
-            ui.possibleMoves = [];
-            ui.renderBoard();
-            ui.notify("Time rewound. Do not fail again.");
-        } else {
-            ui.notify("No history to undo.");
-        }
-    }
+// Global functions
+window.startGame = (difficulty) => {
+    game.reset();
+    game.setDifficulty(difficulty);
+    document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('game-container').style.display = 'flex';
+    ui.renderBoard();
+    ui.notify(`DIFFICULTY SET: ${difficulty.toUpperCase()}`);
+};
+
+window.showMenu = () => {
+    document.getElementById('main-menu').style.display = 'flex';
+    document.getElementById('game-container').style.display = 'none';
+};
+
+window.restartGame = () => {
+    // Just restart with same settings
+    const diff = game.difficulty;
+    game.reset();
+    game.setDifficulty(diff);
+    ui.selectedSquare = null;
+    ui.possibleMoves = [];
+    ui.renderBoard();
+    ui.notify("SYSTEM REBOOTED.");
 };
 
 </script>
