@@ -130,7 +130,7 @@
         }
 
         /* Main Menu Styles */
-        #main-menu {
+        #main-menu, #side-menu {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -140,7 +140,10 @@
             padding: 40px;
             box-shadow: 0 0 30px var(--text-color);
             z-index: 50;
+            position: absolute;
         }
+        
+        #side-menu { display: none; }
 
         button {
             background: transparent;
@@ -195,14 +198,21 @@
     <div id="main-menu">
         <h1>DEUS EX CHESS</h1>
         <p>SELECT DIFFICULTY</p>
-        <button onclick="startGame('easy')">EASY</button>
-        <button onclick="startGame('normal')">NORMAL</button>
-        <button onclick="startGame('unbeatable')">UNBEATABLE</button>
+        <button onclick="selectDifficulty('easy')">EASY</button>
+        <button onclick="selectDifficulty('normal')">NORMAL</button>
+        <button onclick="selectDifficulty('unbeatable')">UNBEATABLE</button>
+    </div>
+
+    <div id="side-menu">
+        <h1>CHOOSE SIDE</h1>
+        <p>SELECT YOUR ALLEGIANCE</p>
+        <button onclick="startGame('white')">WHITE (First Move)</button>
+        <button onclick="startGame('black')">BLACK (Second Move)</button>
     </div>
     
     <div id="game-container">
         <h1>DEUS EX CHESS</h1>
-        <div id="status">Human (White) vs Machine God (Black)</div>
+        <div id="status">Preparing...</div>
         <div id="board"></div>
         <div class="controls">
             <button onclick="showMenu()">Main Menu</button>
@@ -331,12 +341,12 @@ class ChessEngine {
         this.halfMoves = 0;
         this.moveHistory = [];
         this.gameOver = false;
-        this.difficulty = 'normal'; // default
+        this.difficulty = 'normal';
+        this.playerColor = 'white'; // Default
     }
 
-    setDifficulty(level) {
-        this.difficulty = level;
-    }
+    setDifficulty(level) { this.difficulty = level; }
+    setPlayerColor(color) { this.playerColor = color; }
 
     // Helper: is on board?
     onBoard(r, c) {
@@ -454,7 +464,6 @@ class ChessEngine {
     isSquareAttacked(r, c, myColor) {
         const enemyColor = myColor === 'white' ? 'black' : 'white';
         // Check all enemy pieces to see if they can hit (r,c)
-        // Optimization: Reverse check. pretend a piece of type X is at (r,c), can it hit an enemy X?
         
         // Pawn attacks
         const pDir = myColor === 'white' ? -1 : 1;
@@ -529,7 +538,6 @@ class ChessEngine {
     }
 
     // Execute move. Returns true if legal (king safe), false if illegal.
-    // if 'dryRun' is true, we still update state but return bool, expected to be undone immediately.
     makeMove(move, dryRun = false) {
         // Save state for undo
         const state = {
@@ -676,8 +684,11 @@ class ChessEngine {
         let depth = 3; // Normal
         if (this.difficulty === 'easy') depth = 1;
         if (this.difficulty === 'unbeatable') depth = 4;
+        
+        // AI plays OPPOSITE of player
+        const aiColor = this.playerColor === 'white' ? 'black' : 'white';
 
-        const moves = this.getAllLegalMoves('black');
+        const moves = this.getAllLegalMoves(aiColor);
         if (moves.length === 0) return null;
 
         // Randomness for Easy mode
@@ -686,19 +697,32 @@ class ChessEngine {
         }
 
         let bestMove = null;
-        let bestValue = Infinity;
+        let bestValue = aiColor === 'white' ? -Infinity : Infinity;
         let alpha = -Infinity;
         let beta = Infinity;
 
+        // Determine if AI is Maximizing (White) or Minimizing (Black)
+        const isMaximizing = aiColor === 'white';
+
         for(let move of moves) {
             this.makeMove(move, true);
-            let boardValue = this.minimax(depth - 1, alpha, beta, true); // White is max
+            // After AI moves, it's opponent's turn, so we call minimax with !isMaximizing
+            let boardValue = this.minimax(depth - 1, alpha, beta, !isMaximizing); 
             this.undoMove();
-            if (boardValue < bestValue) {
-                bestValue = boardValue;
-                bestMove = move;
+
+            if (isMaximizing) {
+                if (boardValue > bestValue) {
+                    bestValue = boardValue;
+                    bestMove = move;
+                }
+                alpha = Math.max(alpha, bestValue);
+            } else {
+                if (boardValue < bestValue) {
+                    bestValue = boardValue;
+                    bestMove = move;
+                }
+                beta = Math.min(beta, bestValue);
             }
-            beta = Math.min(beta, bestValue);
         }
         return bestMove;
     }
@@ -712,13 +736,35 @@ class ChessUI {
         this.boardEl = document.getElementById('board');
         this.selectedSquare = null;
         this.possibleMoves = [];
-        // No render yet, wait for start
     }
 
     renderBoard() {
         this.boardEl.innerHTML = '';
-        for(let r=0; r<8; r++) {
-            for(let c=0; c<8; c++) {
+        
+        // If player is Black, we want row 0 (Black pieces) at bottom.
+        // Standard loop r=0 is top. 
+        // So if player is Black, we iterate r from 0 to 7 (Black pieces at top? No wait).
+        // Standard Chess: 
+        // r=0: Black Pieces (Top of screen)
+        // r=7: White Pieces (Bottom of screen)
+        
+        // If playing White: View normal. r=0 at Top.
+        // If playing Black: View flipped. r=7 at Top (White), r=0 at Bottom (Black).
+        
+        let rows = [];
+        for(let r=0; r<8; r++) rows.push(r);
+        
+        if (this.game.playerColor === 'black') {
+            rows.reverse(); // 7 at top, 0 at bottom
+        }
+
+        let cols = [0,1,2,3,4,5,6,7];
+        if (this.game.playerColor === 'black') {
+            cols.reverse(); // h at left, a at right
+        }
+
+        for(let r of rows) {
+            for(let c of cols) {
                 const sq = document.createElement('div');
                 sq.className = `square ${(r+c)%2===0 ? 'white-square' : 'black-square'}`;
                 sq.dataset.r = r;
@@ -742,18 +788,42 @@ class ChessUI {
             }
         }
         // Markers
+        // Warning: markers are appended by index. If we flip board, index logic breaks if not careful.
+        // Actually, we are appending to boardEl children. 
+        // The board is grid 8x8. The order of children determines position.
+        // If we flipped generation order, we flipped indices.
+        // So we must match the visual index.
+        
         this.possibleMoves.forEach(m => {
             const marker = document.createElement('div');
             marker.className = 'valid-move-marker';
-            // Find square
-            const index = m.tr * 8 + m.tc;
-            this.boardEl.children[index].appendChild(marker);
+            
+            // Find visual index
+            // Visual row index depends on loop order.
+            let visR = this.game.playerColor === 'black' ? (7 - m.tr) : m.tr;
+            let visC = this.game.playerColor === 'black' ? (7 - m.tc) : m.tc;
+            
+            // But wait, the grid is generated linearly.
+            // If black: row 0 is r=7, row 1 is r=6.
+            // visual index = (Visual Row * 8) + Visual Col
+            
+            // Let's verify loop:
+            // r goes 7,6...0. c goes 7,6...0.
+            // So visual index 0 corresponds to r=7, c=7.
+            // Target square is m.tr, m.tc.
+            
+            // We need to find the child with dataset.r == m.tr && dataset.c == m.tc
+            const targetSq = Array.from(this.boardEl.children).find(
+                child => parseInt(child.dataset.r) === m.tr && parseInt(child.dataset.c) === m.tc
+            );
+            if (targetSq) targetSq.appendChild(marker);
         });
     }
 
     setupInput() {
         this.boardEl.addEventListener('click', (e) => {
-            if (this.game.turn !== 'white') {
+            // Is it human turn?
+            if (this.game.turn !== this.game.playerColor) {
                 this.notify("Wait for the machine God...");
                 return;
             }
@@ -765,8 +835,8 @@ class ChessUI {
             const c = parseInt(target.dataset.c);
             const clickedPiece = this.game.board[r][c];
 
-            // If selecting own piece
-            if (clickedPiece && this.game.isWhite(clickedPiece)) {
+            // If selecting own piece (Must match player color)
+            if (clickedPiece && this.game.getColor(clickedPiece) === this.game.playerColor) {
                 this.selectedSquare = {r, c};
                 // Generate legal moves for UI
                 const allPseudo = this.game.generateMoves(r, c);
@@ -777,7 +847,12 @@ class ChessUI {
                     return success;
                 });
                 this.renderBoard();
-                this.boardEl.children[r*8+c].classList.add('highlight');
+                
+                // Highlight selection (find square by dataset)
+                 const targetSq = Array.from(this.boardEl.children).find(
+                    child => parseInt(child.dataset.r) === r && parseInt(child.dataset.c) === c
+                );
+                if (targetSq) targetSq.classList.add('highlight');
                 return;
             }
 
@@ -791,9 +866,11 @@ class ChessUI {
                         this.possibleMoves = [];
                         this.renderBoard();
                         
+                        const aiColor = this.game.playerColor === 'white' ? 'black' : 'white';
+
                         // Checkmate check
-                        if (this.game.getAllLegalMoves('black').length === 0) {
-                            if (this.game.isCheck('black')) this.notify("IMPOSSIBLE. YOU WIN?", 10000);
+                        if (this.game.getAllLegalMoves(aiColor).length === 0) {
+                            if (this.game.isCheck(aiColor)) this.notify("IMPOSSIBLE. YOU WIN?", 10000);
                             else this.notify("STALEMATE.", 5000);
                             return;
                         }
@@ -804,25 +881,22 @@ class ChessUI {
                          this.notify("Illegal Move. System Rejected.");
                     }
                 } else {
-                    // It was NOT in possible moves. Analyze why for feedback.
-                    // 1. Is it a pseudo-legal move?
+                    // Feedback logic
                     const allPseudo = this.game.generateMoves(this.selectedSquare.r, this.selectedSquare.c);
                     const pseudoMatch = allPseudo.find(m => m.tr === r && m.tc === c);
                     
                     if (pseudoMatch) {
-                        // It WAS pseudo-legal, so it must be illegal due to King Safety
                         this.notify("ILLEGAL: Move leaves King in CHECK.");
                     } else {
-                        // It was not even reachable
-                        if (clickedPiece && this.game.isWhite(clickedPiece)) {
-                            // Just clicked another piece, handled above
+                        if (clickedPiece && this.game.getColor(clickedPiece) === this.game.playerColor) {
+                            // Selected another own piece, handled above
                         } else {
                             this.notify("ILLEGAL: Piece cannot move there.");
                         }
                     }
 
-                    // Deselect if clicking empty or enemy
-                    if (clickedPiece === null || !this.game.isWhite(clickedPiece)) {
+                    // Deselect
+                    if (clickedPiece === null || this.game.getColor(clickedPiece) !== this.game.playerColor) {
                          this.selectedSquare = null;
                          this.possibleMoves = [];
                          this.renderBoard();
@@ -841,14 +915,14 @@ class ChessUI {
                 this.renderBoard();
                 
                 // Check player state
-                 if (this.game.getAllLegalMoves('white').length === 0) {
-                    if (this.game.isCheck('white')) this.notify("CHECKMATE. DEUS EX SOPHIA REIGNS.", 100000);
+                 if (this.game.getAllLegalMoves(this.game.playerColor).length === 0) {
+                    if (this.game.isCheck(this.game.playerColor)) this.notify("CHECKMATE. DEUS EX SOPHIA REIGNS.", 100000);
                     else this.notify("STALEMATE. A draw is a victory for the weak.", 5000);
-                } else if (this.game.isCheck('white')) {
+                } else if (this.game.isCheck(this.game.playerColor)) {
                     this.notify("CHECK. Your King is in peril.");
                 }
 
-                document.getElementById('status').textContent = "Your turn, mortal.";
+                document.getElementById('status').textContent = `Your turn, ${this.game.playerColor}.`;
             } else {
                 this.notify("The machine sees no future. (Game Over)");
             }
@@ -873,29 +947,48 @@ const game = new ChessEngine();
 const ui = new ChessUI(game);
 
 // Global functions
-window.startGame = (difficulty) => {
+window.selectDifficulty = (difficulty) => {
     game.reset();
     game.setDifficulty(difficulty);
     document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('side-menu').style.display = 'flex';
+};
+
+window.startGame = (color) => {
+    game.setPlayerColor(color);
+    document.getElementById('side-menu').style.display = 'none';
     document.getElementById('game-container').style.display = 'flex';
+    
+    document.getElementById('status').textContent = `Playing as ${color.toUpperCase()} vs Machine God`;
     ui.renderBoard();
-    ui.notify(`DIFFICULTY SET: ${difficulty.toUpperCase()}`);
+    ui.notify(`SYSTEM ONLINE. SIDE: ${color.toUpperCase()}`);
+
+    // If playing Black, AI moves first
+    if (color === 'black') {
+        setTimeout(() => ui.aiMove(), 500);
+    }
 };
 
 window.showMenu = () => {
     document.getElementById('main-menu').style.display = 'flex';
+    document.getElementById('side-menu').style.display = 'none';
     document.getElementById('game-container').style.display = 'none';
 };
 
 window.restartGame = () => {
-    // Just restart with same settings
     const diff = game.difficulty;
+    const col = game.playerColor;
     game.reset();
     game.setDifficulty(diff);
+    game.setPlayerColor(col);
     ui.selectedSquare = null;
     ui.possibleMoves = [];
     ui.renderBoard();
     ui.notify("SYSTEM REBOOTED.");
+    
+    if (col === 'black') {
+        setTimeout(() => ui.aiMove(), 500);
+    }
 };
 
 </script>
