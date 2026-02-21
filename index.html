@@ -68,7 +68,7 @@
         .black-square { background-color: var(--board-dark); color: white; }
 
         .piece {
-            z-index: 2;
+            z-index: 5;
             pointer-events: none; /* Let clicks pass to square */
             transition: transform 0.1s;
         }
@@ -86,11 +86,13 @@
 
         .valid-move-marker {
             position: absolute;
-            width: 15px;
-            height: 15px;
-            background-color: rgba(0, 255, 242, 0.5);
+            width: 20px;
+            height: 20px;
+            background-color: rgba(0, 255, 242, 0.7);
             border-radius: 50%;
-            pointer-events: none;
+            pointer-events: none; /* Click passes to square */
+            z-index: 10;
+            box-shadow: 0 0 5px #00fff2;
         }
 
         #status {
@@ -803,7 +805,7 @@ class ChessUI {
 
                 // Is it human turn?
                 if (this.game.turn !== this.game.playerColor) {
-                    this.notify("NOT YOUR TURN.");
+                    this.notify("WAIT. MACHINE IS THINKING...");
                     return;
                 }
 
@@ -835,8 +837,12 @@ class ChessUI {
                     if (targetSq) targetSq.classList.add('highlight');
                     
                     if (this.possibleMoves.length === 0) {
-                        this.notify("NO LEGAL MOVES FOR THIS PIECE.");
-                    } 
+                        this.notify("NO LEGAL MOVES (BLOCKED OR CHECK).");
+                    } else {
+                        // Debug: Tell user exactly what happened
+                        const pName = PIECES[clickedPiece] || clickedPiece;
+                        this.notify(`SELECTED ${pName} at ${String.fromCharCode(97+c)}${8-r}. FOUND ${this.possibleMoves.length} MOVES.`);
+                    }
                     return;
                 }
 
@@ -863,7 +869,7 @@ class ChessUI {
                             // AI Turn
                             setTimeout(() => this.aiMove(), 100);
                         } else {
-                             this.notify("Illegal Move. System Rejected.");
+                             this.notify("SYSTEM REJECTED MOVE (ILLEGAL).");
                         }
                     } else {
                         // Feedback logic
@@ -871,12 +877,12 @@ class ChessUI {
                         const pseudoMatch = allPseudo.find(m => m.tr === r && m.tc === c);
                         
                         if (pseudoMatch) {
-                            this.notify("ILLEGAL: Move leaves King in CHECK.");
+                            this.notify("ILLEGAL: KING WOULD BE IN CHECK.");
                         } else {
                             if (clickedPiece && this.game.getColor(clickedPiece) === this.game.playerColor) {
                                 // Selected another own piece, handled above
                             } else {
-                                this.notify("ILLEGAL: Piece cannot move there.");
+                                this.notify("ILLEGAL: PIECE CANNOT REACH TARGET.");
                             }
                         }
 
