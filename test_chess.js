@@ -1,4 +1,3 @@
-
 const assert = require('assert');
 
 const PIECES = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚', P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔' };
@@ -225,6 +224,19 @@ class ChessEngine {
         this.moveHistory.push(state);
         
         const p = this.board[move.fr][move.fc];
+        
+        // Capture logic
+        const targetPiece = this.board[move.tr][move.tc];
+        // If capturing a Rook, update opponent castling rights
+        if (targetPiece === 'R') {
+             if (move.tr===7 && move.tc===0) this.castling.white.q=false;
+             if (move.tr===7 && move.tc===7) this.castling.white.k=false;
+        }
+        if (targetPiece === 'r') {
+             if (move.tr===0 && move.tc===0) this.castling.black.q=false;
+             if (move.tr===0 && move.tc===7) this.castling.black.k=false;
+        }
+
         this.board[move.tr][move.tc] = p;
         this.board[move.fr][move.fc] = null;
         
@@ -334,4 +346,32 @@ game.makeMove({fr:0, fc:3, tr:4, tc:7}); // Qh4 (Black) - Mate
 assert.ok(game.isCheck('white'), "White should be in check");
 const wMoves = game.getAllLegalMoves('white');
 assert.strictEqual(wMoves.length, 0, "White should have no legal moves (Checkmate)");
+console.log("PASS");
+
+// 4. Test Capture
+console.log("Test 4: Capture Mechanics...");
+game.reset();
+// White Knight (7,1) captures Black Pawn at (5,2)
+game.board[5][2] = 'p';
+// Check if move generated
+const kMoves = game.generateMoves(7, 1);
+const capMove = kMoves.find(m => m.tr === 5 && m.tc === 2);
+assert.ok(capMove, "Capture move found");
+assert.strictEqual(capMove.capture, 'p', "Capture target is correct");
+// Execute
+game.makeMove(capMove);
+assert.strictEqual(game.board[5][2], 'N', "Knight moved to target");
+assert.strictEqual(game.board[7][1], null, "Knight left start");
+console.log("PASS");
+
+// 5. Test Castling Rights on Capture
+console.log("Test 5: Castling Rights Lost on Rook Capture...");
+game.reset();
+// Remove Black Pawn at h7 to open file for testing
+game.board[1][7] = null;
+// Place White Rook at h6, ready to capture Black Rook at h8
+game.board[2][7] = 'R'; // h6
+// Capture h8
+game.makeMove({fr:2, fc:7, tr:0, tc:7, capture: 'r'});
+assert.strictEqual(game.castling.black.k, false, "Black lost kingside castling after rook capture");
 console.log("PASS");

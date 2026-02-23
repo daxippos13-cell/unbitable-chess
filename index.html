@@ -443,6 +443,18 @@ class ChessEngine {
         this.moveHistory.push(state);
         
         const p = this.board[move.fr][move.fc];
+        
+        // Capture logic: Check if capturing a Rook to update opponent castling rights
+        const targetPiece = this.board[move.tr][move.tc];
+        if (targetPiece === 'R') {
+             if (move.tr===7 && move.tc===0) this.castling.white.q=false;
+             if (move.tr===7 && move.tc===7) this.castling.white.k=false;
+        }
+        if (targetPiece === 'r') {
+             if (move.tr===0 && move.tc===0) this.castling.black.q=false;
+             if (move.tr===0 && move.tc===7) this.castling.black.k=false;
+        }
+
         this.board[move.tr][move.tc] = p;
         this.board[move.fr][move.fc] = null;
         
@@ -746,7 +758,10 @@ class ChessUI {
                 return;
             }
             
-            // Deselect
+            // Deselect with feedback
+            if (this.selected) {
+                ui.notify("INVALID MOVE");
+            }
             this.selected = null;
             this.moves = [];
             this.render();
