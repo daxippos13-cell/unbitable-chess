@@ -760,7 +760,16 @@ class ChessUI {
             
             // Deselect with feedback
             if (this.selected) {
-                ui.notify("INVALID MOVE");
+                const targetP = this.game.board[r][c];
+                // Check if it was a valid pattern but illegal (self-check)
+                const rawMoves = this.game.generateMoves(this.selected.r, this.selected.c);
+                const rawMatch = rawMoves.find(m => m.tr === r && m.tc === c);
+                
+                if (rawMatch) {
+                    ui.notify("ILLEGAL: KING IN CHECK");
+                } else {
+                     ui.notify("INVALID MOVE");
+                }
             }
             this.selected = null;
             this.moves = [];
