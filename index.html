@@ -183,7 +183,6 @@
         <div id="board"></div>
         <div class="controls">
             <button onclick="restartGame()">Restart</button>
-            <button onclick="forceTurn()">Force Turn</button>
         </div>
     </div>
 
@@ -362,14 +361,15 @@ class ChessEngine {
         // Castling
         if (checkCastling && type === 'k' && !this.isCheck(color)) {
             const row = color === 'white' ? 7 : 0;
+            const myRook = color === 'white' ? 'R' : 'r';
             // Kingside
-            if (this.castling[color].k && !this.board[row][5] && !this.board[row][6]) {
+            if (this.castling[color].k && this.board[row][7] === myRook && !this.board[row][5] && !this.board[row][6]) {
                 if (!this.isSquareAttacked(row, 5, color) && !this.isSquareAttacked(row, 6, color)) {
                     moves.push({fr: r, fc: c, tr: row, tc: 6, isCastling: 'k'});
                 }
             }
             // Queenside
-            if (this.castling[color].q && !this.board[row][1] && !this.board[row][2] && !this.board[row][3]) {
+            if (this.castling[color].q && this.board[row][0] === myRook && !this.board[row][1] && !this.board[row][2] && !this.board[row][3]) {
                 if (!this.isSquareAttacked(row, 3, color)) { // d1/d8 is checked (row, 3)
                     // Note: b1/b8 (row, 1) doesn't need to be safe, only path of king (e1->c1 crosses d1). King lands on c1.
                     // Correct rule: King cannot pass through check. King starts e1(4), crosses d1(3), lands c1(2).
@@ -386,6 +386,8 @@ class ChessEngine {
         let kr, kc;
         // Find King
         for(let r=0; r<8; r++) for(let c=0; c<8; c++) if (this.board[r][c] === (color === 'white' ? 'K' : 'k')) { kr = r; kc = c; }
+        // If King not found (e.g. testing setups), return true to prevent illegal moves
+        if (kr === undefined) return true;
         return this.isSquareAttacked(kr, kc, color);
     }
 
@@ -811,11 +813,6 @@ window.startGame = (c) => {
     if (c === 'black') setTimeout(() => ui.aiMove(), 500);
 };
 
-window.forceTurn = () => {
-    game.turn = game.playerColor;
-    ui.render();
-    ui.notify("TURN FORCED.");
-};
 window.restartGame = () => location.reload();
 
 </script>
