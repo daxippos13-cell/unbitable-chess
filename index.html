@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unbeatable AI Chess</title>
+    <!-- jQuery (Required by Chessboard.js) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Chessboard.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Responsive Body */
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #2b2b2b;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 10px;
+        }
+        h1 { 
+            margin-top: 10px;
+            margin-bottom: 20px; 
+            text-align: center;
+            font-size: clamp(24px, 5vw, 36px); /* Scales font based on screen width */
+        }
+        
+        /* Flexbox Container for responsiveness */
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            width: 100%;
+            max-width: 1000px;
+        }
+        
+        /* Containers scale to 100% of mobile, but cap at 450px on desktop */
+        .board-container, .sidebar {
+            width: 100%;
+            max-width: 450px;
+        }
+
+        /* Buttons and Dropdowns */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            width: 100%;
+        }
+        select, button {
+            flex: 1; /* Makes buttons stretch evenly */
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+        }
+        select { background: #fff; color: #000; }
+        button { background: #4CAF50; color: white; font-weight: bold; }
+        button:hover { background: #45a049; }
+        button:disabled { background: #888; cursor: not-allowed; }
+        
+        /* Status Bar */
+        #status {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            border-left: 5px solid #4CAF50;
+        }
+        
+        /* The Ledger */
+        .ledger-container {
+            background: #1e1e1e;
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+            height: 350px; /* Fixed height so it scrolls nicely */
+        }
+        .ledger-header {
+            background: #333;
+            padding: 10px;
+            font-weight: bold;
+            text-align: center;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+        }
+        #ledger {
+            padding: 10px;
+            overflow-y: auto;
+            flex-grow: 1;
+            font-family: monospace;
+            font-size: 16px;
+            display: grid;
+            grid-template-columns: 30px 1fr 1fr;
+            row-gap: 5px;
+        }
+        .move-num { color: #888; }
+        .move-white { color: #fff; }
+        .move-black { color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h1>Unbeatable AI Chess</h1>
+
+    <div class="container">
+        <!-- Chess Board Area -->
+        <div class="board-container">
+            <div class="controls">
+                <select id="player-color">
+                    <option value="w">Play as White</option>
+                    <option value="b">Play as Black</option>
+                </select>
+                <button id="start-btn">Start Game</button>
+            </div>
+            <!-- The Board -->
+            <div id="myBoard" style="width: 100%"></div>
+        </div>
+
+        <!-- Sidebar / Ledger Area -->
+        <div class="sidebar">
+            <div id="status">Waiting to start...</div>
+            <div class="ledger-container">
+                <div class="ledger-header">Move History</div>
+                <div id="ledger"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chessboard.js & Chess.js Libraries -->
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <script>
+        let board = null;
+        let game = new Chess();
+        let engine = null;
+        let playerColor = 'w';
+        let aiThinking = false;
+
+        const statusEl = $('#status');
+        const ledgerEl = document.getElementById('ledger');
+
+        // --- 1. INITIALIZE UNBEATABLE AI (STOCKFISH) ---
+        fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')
+            .then(response => response.text())
+            .then(text => {
+                const blob = new Blob([text], {type: 'application/javascript'});
+                engine = new Worker(URL.createObjectURL(blob));
+                
+                engine.onmessage = function(event) {
+                    const line = event.data;
+                    
+                    if (line.includes('bestmove')) {
+                        const match = line.match(/^bestmove ([a-h][1-8])([a-h][1-8])([qrbn])?/);
+                        if (match) {
+                            const move = {
+                                from: match[1],
+                                to: match[2],
+                                promotion: match[3] || 'q'
+                            };
+                            
+                            game.move(move);
+                            board.position(game.fen());
+                            aiThinking = false;
+                            updateStatus();
+                        }
+                    }
+                };
+
+                engine.postMessage('uci');
+                engine.postMessage('setoption name Skill Level value 20');
+                engine.postMessage('setoption name Contempt value 100');
+            });
+
+        // --- 2. GAME LOGIC & UI ---
+        function updateStatus() {
+            let statusHTML = '';
+            let moveColor = game.turn() === 'w' ? 'White' : 'Black';
+
+            if (game.in_checkmate()) {
+                statusHTML = `Game over, ${moveColor} is in checkmate.`;
+            } else if (game.in_draw()) {
+                statusHTML = 'Game over, drawn position';
+                if(game.in_threefold_repetition()) statusHTML += " (Repetition)";
+                if(game.insufficient_material()) statusHTML += " (Insufficient Material)";
+                if(game.in_stalemate()) statusHTML += " (Stalemate)";
+            } else {
+                statusHTML = `${moveColor}'s turn`;
+                if (game.in_check()) {
+                    statusHTML += ' <span style="color:red">(Check)</span>';
+                }
+            }
+
+            statusEl.html(statusHTML);
+            updateLedger();
+
+            if (!game.game_over() && game.turn() !== playerColor && !aiThinking) {
+                aiThinking = true;
+                statusEl.html('AI is thinking...');
+                engine.postMessage(`position fen ${game.fen()}`);
+                engine.postMessage('go depth 18'); 
+            }
+        }
+
+        function updateLedger() {
+            const history = game.history();
+            let html = '';
+            for (let i = 0; i < history.length; i += 2) {
+                let moveNum = (i / 2) + 1;
+                let whiteMove = history[i];
+                let blackMove = history[i + 1] ? history[i + 1] : '';
+                html += `<div class="move-num">${moveNum}.</div>
+                         <div class="move-white">${whiteMove}</div>
+                         <div class="move-black">${blackMove}</div>`;
+            }
+            ledgerEl.innerHTML = html;
+            ledgerEl.scrollTop = ledgerEl.scrollHeight; 
+        }
+
+        // --- 3. BOARD INTERACTION ---
+        function onDragStart(source, piece, position, orientation) {
+            if (game.game_over()) return false;
+            if ((playerColor === 'w' && piece.search(/^b/) !== -1) ||
+                (playerColor === 'b' && piece.search(/^w/) !== -1)) {
+                return false;
+            }
+            if (game.turn() !== playerColor || aiThinking) return false;
+        }
+
+        function onDrop(source, target) {
+            let move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' 
+            });
+
+            if (move === null) return 'snapback';
+            updateStatus();
+        }
+
+        function onSnapEnd() {
+            board.position(game.fen());
+        }
+
+        // --- 4. SETUP ---
+        const config = {
+            draggable: true,
+            position: 'start',
+            showNotation: true,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd
+        };
+        board = Chessboard('myBoard', config);
+
+        // --- 5. MAKE IT RESPONSIVE ---
+        // This tells the chessboard to resize itself whenever the window size changes
+        $(window).resize(board.resize);
+
+        $('#start-btn').on('click', function() {
+            if(!engine) {
+                alert("Please wait 2 seconds for the AI engine to load and try again.");
+                return;
+            }
+            game.reset();
+            playerColor = $('#player-color').val();
+            board.position('start');
+            board.orientation(playerColor === 'w' ? 'white' : 'black');
+            aiThinking = false;
+            updateStatus();
+        });
+
+    </script>
+</body>
+</html>
