@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unbeatable AI Chess</title>
-    <!-- jQuery (Required by Chessboard.js) -->
+    <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Chessboard.js CSS -->
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
@@ -12,7 +12,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
-        /* Responsive Body */
         * { box-sizing: border-box; }
         body {
             font-family: 'Roboto', sans-serif;
@@ -28,10 +27,9 @@
             margin-top: 10px;
             margin-bottom: 20px; 
             text-align: center;
-            font-size: clamp(24px, 5vw, 36px); /* Scales font based on screen width */
+            font-size: clamp(24px, 5vw, 36px); 
         }
         
-        /* Flexbox Container for responsiveness */
         .container {
             display: flex;
             flex-wrap: wrap;
@@ -41,13 +39,11 @@
             max-width: 1000px;
         }
         
-        /* Containers scale to 100% of mobile, but cap at 450px on desktop */
         .board-container, .sidebar {
             width: 100%;
             max-width: 450px;
         }
 
-        /* Buttons and Dropdowns */
         .controls {
             display: flex;
             gap: 10px;
@@ -55,7 +51,7 @@
             width: 100%;
         }
         select, button {
-            flex: 1; /* Makes buttons stretch evenly */
+            flex: 1; 
             padding: 12px;
             font-size: 16px;
             border-radius: 5px;
@@ -65,9 +61,7 @@
         select { background: #fff; color: #000; }
         button { background: #4CAF50; color: white; font-weight: bold; }
         button:hover { background: #45a049; }
-        button:disabled { background: #888; cursor: not-allowed; }
         
-        /* Status Bar */
         #status {
             background: #1e1e1e;
             padding: 15px;
@@ -78,13 +72,12 @@
             border-left: 5px solid #4CAF50;
         }
         
-        /* The Ledger */
         .ledger-container {
             background: #1e1e1e;
             border-radius: 5px;
             display: flex;
             flex-direction: column;
-            height: 350px; /* Fixed height so it scrolls nicely */
+            height: 350px; 
         }
         .ledger-header {
             background: #333;
@@ -107,6 +100,52 @@
         .move-num { color: #888; }
         .move-white { color: #fff; }
         .move-black { color: #aaa; }
+
+        /* Custom Promotion Modal Menu */
+        #promotion-modal {
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
+            left: 0; 
+            top: 0; 
+            width: 100%; 
+            height: 100%; 
+            background-color: rgba(0,0,0,0.85);
+            justify-content: center; 
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #333; 
+            padding: 20px 30px; 
+            border-radius: 10px; 
+            text-align: center;
+            border: 2px solid #4CAF50;
+        }
+        .promo-pieces {
+            display: flex; 
+            gap: 15px; 
+            margin-top: 15px; 
+            justify-content: center;
+        }
+        .promo-piece {
+            width: 70px; 
+            height: 70px; 
+            background: #555; 
+            border-radius: 10px; 
+            cursor: pointer;
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            transition: 0.2s;
+        }
+        .promo-piece:hover { 
+            background: #4CAF50; 
+            transform: scale(1.1); 
+        }
+        .promo-piece img { 
+            width: 60px; 
+            height: 60px; 
+        }
     </style>
 </head>
 <body>
@@ -137,6 +176,19 @@
         </div>
     </div>
 
+    <!-- The Promotion Pop-up Modal -->
+    <div id="promotion-modal">
+        <div class="modal-content">
+            <h3 style="margin-top: 0;">Promote Pawn</h3>
+            <div class="promo-pieces">
+                <div class="promo-piece" onclick="promotePiece('q')"><img id="promo-q" src=""></div>
+                <div class="promo-piece" onclick="promotePiece('r')"><img id="promo-r" src=""></div>
+                <div class="promo-piece" onclick="promotePiece('b')"><img id="promo-b" src=""></div>
+                <div class="promo-piece" onclick="promotePiece('n')"><img id="promo-n" src=""></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Chessboard.js & Chess.js Libraries -->
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
@@ -147,6 +199,7 @@
         let engine = null;
         let playerColor = 'w';
         let aiThinking = false;
+        let pendingPromotionMove = null;
 
         const statusEl = $('#status');
         const ledgerEl = document.getElementById('ledger');
@@ -228,28 +281,76 @@
             ledgerEl.scrollTop = ledgerEl.scrollHeight; 
         }
 
-        // --- 3. BOARD INTERACTION ---
+        // --- 3. BOARD INTERACTION & PROMOTION LOGIC ---
         function onDragStart(source, piece, position, orientation) {
             if (game.game_over()) return false;
             if ((playerColor === 'w' && piece.search(/^b/) !== -1) ||
                 (playerColor === 'b' && piece.search(/^w/) !== -1)) {
                 return false;
             }
-            if (game.turn() !== playerColor || aiThinking) return false;
+            if (game.turn() !== playerColor || aiThinking || pendingPromotionMove) return false;
         }
 
         function onDrop(source, target) {
-            let move = game.move({
-                from: source,
-                to: target,
-                promotion: 'q' 
-            });
+            // Get a list of all legal moves to check if this specific move is valid
+            let moves = game.moves({ verbose: true });
+            let isLegal = false;
+            let isPromote = false;
+            
+            for (let i = 0; i < moves.length; i++) {
+                if (moves[i].from === source && moves[i].to === target) {
+                    isLegal = true;
+                    // Check if the move is a promotion move
+                    if (moves[i].flags.includes('p') || moves[i].promotion) {
+                        isPromote = true;
+                    }
+                    break;
+                }
+            }
 
-            if (move === null) return 'snapback';
+            // If illegal, snap back
+            if (!isLegal) return 'snapback';
+
+            // If it is a promotion, open the menu and PAUSE the move
+            if (isPromote) {
+                pendingPromotionMove = { source: source, target: target };
+                let color = game.turn();
+                
+                // Load the correct piece images (White or Black) into the modal
+                document.getElementById('promo-q').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}Q.png`;
+                document.getElementById('promo-r').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}R.png`;
+                document.getElementById('promo-b').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}B.png`;
+                document.getElementById('promo-n').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}N.png`;
+                
+                document.getElementById('promotion-modal').style.display = 'flex';
+                
+                // Return undefined so the piece visually stays on the target square until they pick
+                return;
+            }
+
+            // Standard move (Not a promotion)
+            game.move({ from: source, to: target });
             updateStatus();
         }
 
+        // Called when the user clicks a piece in the Promotion pop-up
+        function promotePiece(pieceType) {
+            document.getElementById('promotion-modal').style.display = 'none';
+            if (pendingPromotionMove) {
+                game.move({
+                    from: pendingPromotionMove.source,
+                    to: pendingPromotionMove.target,
+                    promotion: pieceType
+                });
+                pendingPromotionMove = null;
+                board.position(game.fen());
+                updateStatus();
+            }
+        }
+
         function onSnapEnd() {
+            // Don't update board if waiting for promotion menu choice
+            if (pendingPromotionMove) return; 
             board.position(game.fen());
         }
 
@@ -264,9 +365,8 @@
             onSnapEnd: onSnapEnd
         };
         board = Chessboard('myBoard', config);
-
-        // --- 5. MAKE IT RESPONSIVE ---
-        // This tells the chessboard to resize itself whenever the window size changes
+        
+        // Responsive resize
         $(window).resize(board.resize);
 
         $('#start-btn').on('click', function() {
@@ -279,6 +379,8 @@
             board.position('start');
             board.orientation(playerColor === 'w' ? 'white' : 'black');
             aiThinking = false;
+            pendingPromotionMove = null;
+            document.getElementById('promotion-modal').style.display = 'none';
             updateStatus();
         });
 
