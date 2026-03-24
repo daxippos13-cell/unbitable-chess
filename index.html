@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unbeatable AI Chess</title>
-    <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Chessboard.js CSS -->
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
@@ -42,6 +39,11 @@
         .board-container, .sidebar {
             width: 100%;
             max-width: 450px;
+        }
+
+        /* --- MOBILE FIX HERE --- */
+        #myBoard {
+            touch-action: none; 
         }
 
         .controls {
@@ -153,7 +155,6 @@
     <h1>Unbeatable AI Chess</h1>
 
     <div class="container">
-        <!-- Chess Board Area -->
         <div class="board-container">
             <div class="controls">
                 <select id="player-color">
@@ -162,11 +163,9 @@
                 </select>
                 <button id="start-btn">Start Game</button>
             </div>
-            <!-- The Board -->
-            <div id="myBoard" style="width: 100%"></div>
+            <div id="myBoard" style="width: 100%; touch-action: none;"></div>
         </div>
 
-        <!-- Sidebar / Ledger Area -->
         <div class="sidebar">
             <div id="status">Waiting to start...</div>
             <div class="ledger-container">
@@ -176,7 +175,6 @@
         </div>
     </div>
 
-    <!-- The Promotion Pop-up Modal -->
     <div id="promotion-modal">
         <div class="modal-content">
             <h3 style="margin-top: 0;">Promote Pawn</h3>
@@ -189,7 +187,6 @@
         </div>
     </div>
 
-    <!-- Chessboard.js & Chess.js Libraries -->
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 
