@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Unbeatable AI Chess</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
@@ -19,6 +19,8 @@
             align-items: center;
             margin: 0;
             padding: 10px;
+            /* Prevents pull-to-refresh on some mobile browsers */
+            overscroll-behavior: none;
         }
         h1 { 
             margin-top: 10px;
@@ -41,9 +43,10 @@
             max-width: 450px;
         }
 
-        /* --- MOBILE FIX HERE --- */
+        /* FIX: Prevents the screen from moving/scrolling when dragging pieces */
         #myBoard {
             touch-action: none; 
+            -webkit-user-select: none;
         }
 
         .controls {
@@ -79,7 +82,7 @@
             border-radius: 5px;
             display: flex;
             flex-direction: column;
-            height: 350px; 
+            height: 300px; 
         }
         .ledger-header {
             background: #333;
@@ -96,58 +99,43 @@
             font-family: monospace;
             font-size: 16px;
             display: grid;
-            grid-template-columns: 30px 1fr 1fr;
+            grid-template-columns: 40px 1fr 1fr;
             row-gap: 5px;
         }
         .move-num { color: #888; }
         .move-white { color: #fff; }
         .move-black { color: #aaa; }
 
-        /* Custom Promotion Modal Menu */
+        /* Promotion Modal */
         #promotion-modal {
             display: none; 
             position: fixed; 
             z-index: 1000; 
-            left: 0; 
-            top: 0; 
-            width: 100%; 
-            height: 100%; 
+            left: 0; top: 0; width: 100%; height: 100%; 
             background-color: rgba(0,0,0,0.85);
             justify-content: center; 
             align-items: center;
         }
         .modal-content {
             background-color: #333; 
-            padding: 20px 30px; 
+            padding: 20px; 
             border-radius: 10px; 
             text-align: center;
             border: 2px solid #4CAF50;
         }
         .promo-pieces {
             display: flex; 
-            gap: 15px; 
-            margin-top: 15px; 
-            justify-content: center;
+            gap: 10px; 
+            margin-top: 15px;
         }
         .promo-piece {
-            width: 70px; 
-            height: 70px; 
+            width: 65px; height: 65px; 
             background: #555; 
-            border-radius: 10px; 
+            border-radius: 8px; 
             cursor: pointer;
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            transition: 0.2s;
+            display: flex; justify-content: center; align-items: center;
         }
-        .promo-piece:hover { 
-            background: #4CAF50; 
-            transform: scale(1.1); 
-        }
-        .promo-piece img { 
-            width: 60px; 
-            height: 60px; 
-        }
+        .promo-piece img { width: 55px; height: 55px; }
     </style>
 </head>
 <body>
@@ -163,11 +151,11 @@
                 </select>
                 <button id="start-btn">Start Game</button>
             </div>
-            <div id="myBoard" style="width: 100%; touch-action: none;"></div>
+            <div id="myBoard"></div>
         </div>
 
         <div class="sidebar">
-            <div id="status">Waiting to start...</div>
+            <div id="status">Press Start to Begin</div>
             <div class="ledger-container">
                 <div class="ledger-header">Move History</div>
                 <div id="ledger"></div>
@@ -177,7 +165,7 @@
 
     <div id="promotion-modal">
         <div class="modal-content">
-            <h3 style="margin-top: 0;">Promote Pawn</h3>
+            <h3>Promote Pawn</h3>
             <div class="promo-pieces">
                 <div class="promo-piece" onclick="promotePiece('q')"><img id="promo-q" src=""></div>
                 <div class="promo-piece" onclick="promotePiece('r')"><img id="promo-r" src=""></div>
@@ -201,26 +189,18 @@
         const statusEl = $('#status');
         const ledgerEl = document.getElementById('ledger');
 
-        // --- 1. INITIALIZE UNBEATABLE AI (STOCKFISH) ---
+        // 1. Load Stockfish Engine
         fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')
-            .then(response => response.text())
+            .then(res => res.text())
             .then(text => {
                 const blob = new Blob([text], {type: 'application/javascript'});
                 engine = new Worker(URL.createObjectURL(blob));
                 
-                engine.onmessage = function(event) {
-                    const line = event.data;
-                    
-                    if (line.includes('bestmove')) {
-                        const match = line.match(/^bestmove ([a-h][1-8])([a-h][1-8])([qrbn])?/);
+                engine.onmessage = function(e) {
+                    if (e.data.includes('bestmove')) {
+                        const match = e.data.match(/^bestmove ([a-h][1-8])([a-h][1-8])([qrbn])?/);
                         if (match) {
-                            const move = {
-                                from: match[1],
-                                to: match[2],
-                                promotion: match[3] || 'q'
-                            };
-                            
-                            game.move(move);
+                            game.move({ from: match[1], to: match[2], promotion: match[3] || 'q' });
                             board.position(game.fen());
                             aiThinking = false;
                             updateStatus();
@@ -230,36 +210,33 @@
 
                 engine.postMessage('uci');
                 engine.postMessage('setoption name Skill Level value 20');
-                engine.postMessage('setoption name Contempt value 100');
+                // SPEED OPTIMIZATION: Use 32MB of Hash memory
+                engine.postMessage('setoption name Hash value 32'); 
             });
 
-        // --- 2. GAME LOGIC & UI ---
         function updateStatus() {
-            let statusHTML = '';
+            let status = '';
             let moveColor = game.turn() === 'w' ? 'White' : 'Black';
 
             if (game.in_checkmate()) {
-                statusHTML = `Game over, ${moveColor} is in checkmate.`;
+                status = `Checkmate! ${moveColor} loses.`;
             } else if (game.in_draw()) {
-                statusHTML = 'Game over, drawn position';
-                if(game.in_threefold_repetition()) statusHTML += " (Repetition)";
-                if(game.insufficient_material()) statusHTML += " (Insufficient Material)";
-                if(game.in_stalemate()) statusHTML += " (Stalemate)";
+                status = 'Game Over: Draw';
             } else {
-                statusHTML = `${moveColor}'s turn`;
-                if (game.in_check()) {
-                    statusHTML += ' <span style="color:red">(Check)</span>';
-                }
+                status = `${moveColor}'s turn`;
+                if (game.in_check()) status += ' (Check!)';
             }
 
-            statusEl.html(statusHTML);
+            statusEl.html(status);
             updateLedger();
 
+            // Trigger AI if it's not the player's turn
             if (!game.game_over() && game.turn() !== playerColor && !aiThinking) {
                 aiThinking = true;
                 statusEl.html('AI is thinking...');
                 engine.postMessage(`position fen ${game.fen()}`);
-                engine.postMessage('go depth 18'); 
+                // SPEED OPTIMIZATION: Think for exactly 1 second (1000ms)
+                engine.postMessage('go movetime 1000'); 
             }
         }
 
@@ -267,120 +244,74 @@
             const history = game.history();
             let html = '';
             for (let i = 0; i < history.length; i += 2) {
-                let moveNum = (i / 2) + 1;
-                let whiteMove = history[i];
-                let blackMove = history[i + 1] ? history[i + 1] : '';
-                html += `<div class="move-num">${moveNum}.</div>
-                         <div class="move-white">${whiteMove}</div>
-                         <div class="move-black">${blackMove}</div>`;
+                html += `<div class="move-num">${(i/2)+1}.</div>
+                         <div class="move-white">${history[i]}</div>
+                         <div class="move-black">${history[i+1] || ''}</div>`;
             }
             ledgerEl.innerHTML = html;
-            ledgerEl.scrollTop = ledgerEl.scrollHeight; 
+            ledgerEl.scrollTop = ledgerEl.scrollHeight;
         }
 
-        // --- 3. BOARD INTERACTION & PROMOTION LOGIC ---
-        function onDragStart(source, piece, position, orientation) {
-            if (game.game_over()) return false;
+        function onDragStart(source, piece) {
+            if (game.game_over() || aiThinking) return false;
             if ((playerColor === 'w' && piece.search(/^b/) !== -1) ||
-                (playerColor === 'b' && piece.search(/^w/) !== -1)) {
-                return false;
-            }
-            if (game.turn() !== playerColor || aiThinking || pendingPromotionMove) return false;
+                (playerColor === 'b' && piece.search(/^w/) !== -1)) return false;
         }
 
         function onDrop(source, target) {
-            // Get a list of all legal moves to check if this specific move is valid
             let moves = game.moves({ verbose: true });
-            let isLegal = false;
-            let isPromote = false;
-            
-            for (let i = 0; i < moves.length; i++) {
-                if (moves[i].from === source && moves[i].to === target) {
-                    isLegal = true;
-                    // Check if the move is a promotion move
-                    if (moves[i].flags.includes('p') || moves[i].promotion) {
-                        isPromote = true;
-                    }
-                    break;
-                }
-            }
+            let move = moves.find(m => m.from === source && m.to === target);
 
-            // If illegal, snap back
-            if (!isLegal) return 'snapback';
+            if (!move) return 'snapback';
 
-            // If it is a promotion, open the menu and PAUSE the move
-            if (isPromote) {
-                pendingPromotionMove = { source: source, target: target };
-                let color = game.turn();
-                
-                // Load the correct piece images (White or Black) into the modal
-                document.getElementById('promo-q').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}Q.png`;
-                document.getElementById('promo-r').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}R.png`;
-                document.getElementById('promo-b').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}B.png`;
-                document.getElementById('promo-n').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${color}N.png`;
-                
+            if (move.flags.includes('p')) {
+                pendingPromotionMove = { source, target };
+                const c = game.turn();
+                const baseUrl = 'https://chessboardjs.com/img/chesspieces/wikipedia/';
+                document.getElementById('promo-q').src = `${baseUrl}${c}Q.png`;
+                document.getElementById('promo-r').src = `${baseUrl}${c}R.png`;
+                document.getElementById('promo-b').src = `${baseUrl}${c}B.png`;
+                document.getElementById('promo-n').src = `${baseUrl}${c}N.png`;
                 document.getElementById('promotion-modal').style.display = 'flex';
-                
-                // Return undefined so the piece visually stays on the target square until they pick
                 return;
             }
 
-            // Standard move (Not a promotion)
             game.move({ from: source, to: target });
             updateStatus();
         }
 
-        // Called when the user clicks a piece in the Promotion pop-up
-        function promotePiece(pieceType) {
+        function promotePiece(type) {
             document.getElementById('promotion-modal').style.display = 'none';
-            if (pendingPromotionMove) {
-                game.move({
-                    from: pendingPromotionMove.source,
-                    to: pendingPromotionMove.target,
-                    promotion: pieceType
-                });
-                pendingPromotionMove = null;
-                board.position(game.fen());
-                updateStatus();
-            }
+            game.move({ from: pendingPromotionMove.source, to: pendingPromotionMove.target, promotion: type });
+            pendingPromotionMove = null;
+            board.position(game.fen());
+            updateStatus();
         }
 
         function onSnapEnd() {
-            // Don't update board if waiting for promotion menu choice
-            if (pendingPromotionMove) return; 
-            board.position(game.fen());
+            if (!pendingPromotionMove) board.position(game.fen());
         }
 
-        // --- 4. SETUP ---
-        const config = {
+        board = Chessboard('myBoard', {
             draggable: true,
             position: 'start',
-            showNotation: true,
             pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
             onDragStart: onDragStart,
             onDrop: onDrop,
             onSnapEnd: onSnapEnd
-        };
-        board = Chessboard('myBoard', config);
-        
-        // Responsive resize
+        });
+
         $(window).resize(board.resize);
 
         $('#start-btn').on('click', function() {
-            if(!engine) {
-                alert("Please wait 2 seconds for the AI engine to load and try again.");
-                return;
-            }
+            if(!engine) return alert("AI still loading...");
             game.reset();
             playerColor = $('#player-color').val();
-            board.position('start');
             board.orientation(playerColor === 'w' ? 'white' : 'black');
+            board.position('start');
             aiThinking = false;
-            pendingPromotionMove = null;
-            document.getElementById('promotion-modal').style.display = 'none';
             updateStatus();
         });
-
     </script>
 </body>
 </html>
